@@ -1,9 +1,10 @@
 import time
 
-from pystruments.keysight.M8195A import M8195A
 from pystruments.instrument import InstrumentBase, get_decorator, set_decorator
+from pystruments.keysight.M8195A import M8195A, M8195A_waveform
 from pystruments.parameter import Parameter
 from pystruments.utils import *
+from pystruments.waveform import Waveform
 
 
 class M8197A(InstrumentBase):
@@ -427,6 +428,21 @@ class M8197A(InstrumentBase):
     @set_decorator
     def set_clock_ref_divider2(self, value):
         self.send(':OUTP:ROSC:RCD2 {}'.format(int(value)))
+
+
+class M8197A_waveform(Waveform):
+    def __init__(self, n_awgs, n_channels=4, *args, **kwargs):
+        super(M8197A_waveform, self).__init__(*args, **kwargs)
+        for n in range(n_awgs):
+            n = n + 1
+            awg = M8195A_waveform(name='AWG{}'.format(n), n_channels=n_channels)
+            self.add_child(awg)
+
+    def get_dict(self):
+        d = super(M8197A_waveform, self).get_dict()
+        del d['func']
+        del d['func_params']
+        return d
 
 
 if __name__ == '__main__':

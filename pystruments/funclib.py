@@ -1,6 +1,6 @@
 import numpy as np
 
-from parameter import Parameter
+from pystruments.parameter import Parameter
 
 """
 Predefined functions

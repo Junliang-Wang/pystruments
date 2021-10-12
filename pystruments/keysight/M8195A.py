@@ -3,6 +3,7 @@ import collections
 from pystruments.instrument import InstrumentBase, get_decorator, set_decorator
 from pystruments.parameter import Parameter
 from pystruments.utils import *
+from pystruments.waveform import Waveform
 
 granularity = 1280
 _validators = {
@@ -77,7 +78,8 @@ class M8195A(InstrumentBase):
         for n in [1, 2, 3, 4]:
             ch = M8195A_channel(n=n, parent=self)
             self.add_child(ch)
-
+        self.sequencer = M8195A_sequencer(self)
+        
     def send(self, cmd, wait_to_complete=True):
         super(M8195A, self).send(cmd)
         if wait_to_complete:
@@ -856,6 +858,115 @@ class M8195A_channel(InstrumentBase):
         lengths = str_[1::2]
         d = {int(id_): int(length) for id_, length in zip(ids, lengths)}
         return d
+
+
+class M8195A_waveform(Waveform):
+    def __init__(self, n_channels=4, *args, **kwargs):
+        super(M8195A_waveform, self).__init__(*args, **kwargs)
+        for n in range(n_channels):
+            n = n + 1
+            channel = Waveform(name='ch{}'.format(n))
+            self.add_child(channel)
+
+    @property
+    def channels(self):
+        return {i + 1: child for i, child in enumerate(self.childs)}
+
+    def get_dict(self):
+        d = super(M8195A_waveform, self).get_dict()
+        del d['func']
+        del d['func_params']
+        return d
+
+
+class M8195A_sequencer(M8195A_waveform):
+    def __init__(self, awg, *args, **kwargs):
+        if not isinstance(awg, M8195A):
+            raise ValueError('AWG must be an instance of {}'.format(M8195A))
+        self.awg = awg
+        n_channels = len(self.awg.channels)
+        super(M8195A_sequencer, self).__init__(n_channels=n_channels, *args, **kwargs)
+
+    def generate_sequence(self, dims, n_empty=0, start_with_empty=True, **entry_kwargs):
+        self._prepare_sequence()
+        self.set_dims(dims, reduced=True)
+        self._fill_segments()
+        self._fill_sequence_table(
+            n_empty=n_empty,
+            start_with_empty=start_with_empty,
+            **entry_kwargs
+        )
+
+    def _prepare_sequence(self):
+        self.awg.stop()
+        self.awg.set_sequence_mode('STS')
+        self.awg.reset_sequence_table()
+        for ch in self.awg.childs:
+            ch.delete_all_segments()
+
+    def _fill_segments(self):
+        wf_channels = self.channels
+        last_ids = []
+        for n, channel in self.awg.active_channels.items():
+            wf_ch = wf_channels[n]
+            wf_values = wf_ch.value_generator()
+
+            segment_id = 1  # use 1 for dummy waveform (all 0V)
+            channel.define_segment(
+                segment_id=segment_id,
+                init_value=0.0,
+            )
+            for values in wf_values:
+                segment_id += 1
+                channel.set_waveform_to_segment(
+                    segment_id=segment_id,
+                    waveform=values,
+                )
+            last_ids.append(segment_id)
+        same_last_id = len(set(last_ids)) == 1
+        if not same_last_id:
+            raise ValueError('Channel waveforms have different sizes')
+
+    def _fill_sequence_table(self, n_empty=0, start_with_empty=True, **entry_kwargs):
+        use_marker = self.awg.is_using_markers()
+        default_kwargs = dict(
+            segment_loop=1,
+            segment_advancement_mode='cond',
+            sequence_loop=1,
+            sequence_advancement_mode='auto',
+        )
+        for key in default_kwargs.keys():
+            if key not in entry_kwargs.keys():
+                continue
+            default_kwargs[key] = entry_kwargs[key]
+
+        n_segments = int(np.prod(self.dims[1:]))
+        seq_size = n_segments * (1 + n_empty)
+        last_seq_id = 0
+        for i in range(n_segments):
+            segment_id = i + 2  # id 1 is a dummy segment
+
+            if start_with_empty:
+                segment_ids = [1] * n_empty + [segment_id]
+            else:
+                segment_ids = [segment_id] + [1] * n_empty
+
+            for seg_id in segment_ids:
+                new_sequence = True if last_seq_id == 0 else False
+                end_sequence = True if last_seq_id == seq_size - 1 else False
+                end_scenario = end_sequence
+
+                self.awg.set_sequence_entry(
+                    sequence_id=last_seq_id,
+                    segment_id=seg_id,
+                    entry_type='data',
+                    use_marker=use_marker,
+                    new_sequence=new_sequence,
+                    end_sequence=end_sequence,
+                    end_scenario=end_scenario,
+                    **default_kwargs
+                )
+                last_seq_id += 1
 
 
 # # @profile

@@ -16,8 +16,8 @@ extras = {
 extras_require = {k: '>='.join(v[0:2]) for k, v in extras.items()}
 
 install_requires = [
-    'numpy>=1.18',
-    'pyvisa>=0.27',
+    'numpy>=1.15',
+    'pyvisa>=1.10',
 ]
 
 setuptools.setup(

@@ -2,7 +2,7 @@ import json
 
 import pyvisa
 
-from parameter import Parameter
+from pystruments.parameter import Parameter
 
 
 def get_decorator(fget):
@@ -138,12 +138,13 @@ class InstrumentBase(object):
         self.childs = []
 
     def set_config(self, config, include_childs=False):
-        if include_childs and 'childs' in config.keys():
-            childs_configs = config.pop('childs')
+        instr_config = config['config']
+        if include_childs and 'childs_config' in config.keys():
+            childs_configs = config['childs_config']
         else:
             childs_configs = []
 
-        for key, value in config.items():
+        for key, value in instr_config.items():
             if key not in self.parameters_list:
                 raise ValueError('Parameter "{}" is not valid: ', key)
             fset_name = 'set_{}'.format(key)
@@ -155,9 +156,10 @@ class InstrumentBase(object):
             self.childs[i].set_config(config=child_config)
 
     def get_config(self, include_childs=False):
-        config = {param.name: param.value for param in self.parameters}
+        config = {}
+        config['config'] = {param.name: param.value for param in self.parameters}
         if include_childs:
-            config['childs'] = [child.get_config() for child in self.childs]
+            config['childs_config'] = [child.get_config() for child in self.childs]
         return config
 
     def save_config(self, fullpath, include_childs=True):

@@ -9,5 +9,5 @@ Current implementations:
 * Keysight M8195A (Arbitrary Waveform Generator)
 * Keysight M8197A (Synchronisation unit)
 
-### Version 0.1.0a (October 11th, 2021)
+### Version 0.1.0 (October 11th, 2021)
 * Initial release
