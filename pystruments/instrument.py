@@ -40,10 +40,10 @@ class InstrumentBase(object):
     default_parameters = tuple()
 
     def __init__(self, address, timeout=2000, write_termination=None, read_termination='\n',
-                 parent=None, childs=[], alias=None,
+                 parent=None, childs=[], name='instr',
                  **kwargs):
         self.address = address
-        self.alias = alias
+        self.name = name
         self.timeout = timeout
         self.write_termination = write_termination
         self.read_termination = read_termination
@@ -77,8 +77,12 @@ class InstrumentBase(object):
         self.instrument.timeout = self.timeout
         self.identity = self.instrument.query('*IDN?')
         print('Connected to: ' + self.get_identity())
+        for child in self.childs:
+            child.open_com()
 
     def close_com(self):
+        for child in self.childs:
+            child.close_com()
         self.instrument.close()
         print('Disconnected from: ' + self.get_identity())
 
@@ -183,8 +187,7 @@ class InstrumentBase(object):
         return str(self)
 
     def __str__(self):
-        cname = self.__class__.__name__
-        out = '{}: {} ({})'.format(cname, self.identity, self.address)
+        out = '[{}] {} ({})'.format(self.name, self.identity, self.address)
         return out
 
 

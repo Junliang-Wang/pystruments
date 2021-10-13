@@ -1,7 +1,7 @@
 import time
 
 from pystruments.instrument import InstrumentBase, get_decorator, set_decorator
-from pystruments.keysight.M8195A import M8195A, M8195A_waveform
+from pystruments.keysight.M8195A import M8195A
 from pystruments.parameter import Parameter
 from pystruments.utils import *
 from pystruments.waveform import Waveform
@@ -116,6 +116,12 @@ class M8197A(InstrumentBase):
         Send an enabled event.
         """
         self.send(':TRIG:ENAB')
+
+    def get_sequencer(self):
+        sequencer = M8197A_sequencer(self, name=self.name)
+        for seq_awg, sync_awg in zip(sequencer.awgs.values(), self.awgs.values()):
+            seq_awg.name = sync_awg.name
+        return sequencer
 
     @staticmethod
     def _addresses_to_list(str_addresses):
@@ -430,16 +436,27 @@ class M8197A(InstrumentBase):
         self.send(':OUTP:ROSC:RCD2 {}'.format(int(value)))
 
 
-class M8197A_waveform(Waveform):
-    def __init__(self, n_awgs, n_channels=4, *args, **kwargs):
-        super(M8197A_waveform, self).__init__(*args, **kwargs)
-        for n in range(n_awgs):
-            n = n + 1
-            awg = M8195A_waveform(name='AWG{}'.format(n), n_channels=n_channels)
-            self.add_child(awg)
+class M8197A_sequencer(Waveform):
+    def __init__(self, sync, *args, **kwargs):
+        if not isinstance(sync, M8197A):
+            raise ValueError('AWG must be an instance of {}'.format(M8197A))
+        self.sync = sync
+        super(M8197A_sequencer, self).__init__(*args, **kwargs)
+        for awg in self.sync.awgs.values():
+            seqi = awg.get_sequencer()
+            self.add_child(seqi)
+
+    @property
+    def awgs(self):
+        return {slot_number: self.childs[i] for i, slot_number in enumerate(self.sync.awgs.keys())}
+
+    def generate_sequence(self, dims, n_empty=0, start_with_empty=True, **entry_kwargs):
+        self.set_dims(dims, reduced=True)
+        for awg in self.childs:
+            awg.generate_sequence(dims, n_empty=n_empty, start_with_empty=start_with_empty, **entry_kwargs)
 
     def get_dict(self):
-        d = super(M8197A_waveform, self).get_dict()
+        d = super(M8197A_sequencer, self).get_dict()
         del d['func']
         del d['func_params']
         return d

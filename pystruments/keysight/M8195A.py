@@ -76,10 +76,9 @@ class M8195A(InstrumentBase):
     def __init__(self, *args, **kwargs):
         super(M8195A, self).__init__(*args, **kwargs)
         for n in [1, 2, 3, 4]:
-            ch = M8195A_channel(n=n, parent=self)
+            ch = M8195A_channel(n=n, parent=self, name='ch{}'.format(n))
             self.add_child(ch)
-        self.sequencer = M8195A_sequencer(self)
-        
+
     def send(self, cmd, wait_to_complete=True):
         super(M8195A, self).send(cmd)
         if wait_to_complete:
@@ -149,6 +148,12 @@ class M8195A(InstrumentBase):
 
     def get_channel(self, channel):
         return self.channels[channel]
+
+    def get_sequencer(self):
+        sequencer = M8195A_sequencer(self, name=self.name)
+        for seq_ch, awg_ch in zip(sequencer.channels.values(), self.channels.values()):
+            seq_ch.name = awg_ch.name
+        return sequencer
 
     """
     segments
@@ -660,6 +665,12 @@ class M8195A_channel(InstrumentBase):
             raise ValueError('channel number must be in [1,2,3,4]')
         self.n = n
 
+    def open_com(self):
+        pass
+
+    def close_com(self):
+        pass
+
     def send(self, *args, **kwargs):
         """
         Overwrite self.send method with self.parent.send
@@ -860,9 +871,13 @@ class M8195A_channel(InstrumentBase):
         return d
 
 
-class M8195A_waveform(Waveform):
-    def __init__(self, n_channels=4, *args, **kwargs):
-        super(M8195A_waveform, self).__init__(*args, **kwargs)
+class M8195A_sequencer(Waveform):
+    def __init__(self, awg, *args, **kwargs):
+        if not isinstance(awg, M8195A):
+            raise ValueError('AWG must be an instance of {}'.format(M8195A))
+        super(M8195A_sequencer, self).__init__(*args, **kwargs)
+        self.awg = awg
+        n_channels = len(self.awg.channels)
         for n in range(n_channels):
             n = n + 1
             channel = Waveform(name='ch{}'.format(n))
@@ -873,23 +888,14 @@ class M8195A_waveform(Waveform):
         return {i + 1: child for i, child in enumerate(self.childs)}
 
     def get_dict(self):
-        d = super(M8195A_waveform, self).get_dict()
+        d = super(M8195A_sequencer, self).get_dict()
         del d['func']
         del d['func_params']
         return d
 
-
-class M8195A_sequencer(M8195A_waveform):
-    def __init__(self, awg, *args, **kwargs):
-        if not isinstance(awg, M8195A):
-            raise ValueError('AWG must be an instance of {}'.format(M8195A))
-        self.awg = awg
-        n_channels = len(self.awg.channels)
-        super(M8195A_sequencer, self).__init__(n_channels=n_channels, *args, **kwargs)
-
     def generate_sequence(self, dims, n_empty=0, start_with_empty=True, **entry_kwargs):
-        self._prepare_sequence()
         self.set_dims(dims, reduced=True)
+        self._prepare_sequence()
         self._fill_segments()
         self._fill_sequence_table(
             n_empty=n_empty,

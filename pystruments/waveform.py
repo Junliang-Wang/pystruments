@@ -4,8 +4,8 @@ from itertools import product, izip
 
 import numpy as np
 
-from funclib import constant, constant_params
-from parameter import Parameter
+from pystruments.funclib import constant, constant_params
+from pystruments.parameter import Parameter
 
 
 class SingleWaveform(object):
@@ -148,13 +148,15 @@ class SingleWaveform(object):
 
     def value_generator(self, dims=None, reduced=False):
         cgrid = self.creation_grid(dims, reduced)
+        ngrid = self.name_grid(dims, reduced)
         carr = cgrid.flatten(order='F')
+        narr = ngrid.flatten(order='F')
         unique_wfs = self.unique_waveforms()
-        last_wf = None
-        for create in carr:
+        wfs = {}
+        for create, name in zip(carr, narr):
             if create:
-                last_wf = next(unique_wfs)
-            yield last_wf
+                wfs[name] = next(unique_wfs)
+            yield wfs[name]
 
     def get_dict(self):
         d = {}
@@ -270,23 +272,32 @@ if __name__ == '__main__':
     # for i, waveform in enumerate(uwfs):
     #     ax.plot(waveform, label=i)
     # ax.legend()
-    func_params = pulse_params(
-        pts=100,
-        base=0,
-        delay=2,
-        ampl=1,
-        length=10,
-    )
-    func_params['ampl'].sweep_linear(1, -1, dim=1)
-    mk = SingleWaveform(name='marker', func=pulse, func_params=func_params)
-    func_params = pulse_params(
-        pts=100,
-        base=0,
-        delay=2,
-        ampl=1,
-        length=10,
-    )
-    func_params['base'].max_value = 1
-    func_params['base'].sweep_linear(1, -1, dim=1)
-    func_params['ampl'].sweep_linear(1, -1, dim=2)
-    wf = Waveform('test', func=pulse, func_params=func_params, childs=[mk])
+    # func_params = pulse_params(
+    #     pts=100,
+    #     base=0,
+    #     delay=2,
+    #     ampl=1,
+    #     length=10,
+    # )
+    # func_params['ampl'].sweep_linear(1, -1, dim=1)
+    # mk = SingleWaveform(name='marker', func=pulse, func_params=func_params)
+    # func_params = pulse_params(
+    #     pts=100,
+    #     base=0,
+    #     delay=2,
+    #     ampl=1,
+    #     length=10,
+    # )
+    # func_params['base'].max_value = 1
+    # func_params['base'].sweep_linear(1, -1, dim=1)
+    # func_params['ampl'].sweep_linear(1, -1, dim=2)
+    # wf = Waveform('test', func=pulse, func_params=func_params, childs=[mk])
+
+    wf = SingleWaveform()
+    from pystruments.funclib import pulse, pulse_params
+
+    params = pulse_params(pts=1, base=0, delay=1, ampl=1, length=10)
+    params['delay'].sweep_stepsize(init=0, step_size=5, dim=1)
+    wf.set_func(pulse, params)
+    values = list(wf.value_generator(dims=[100, 2, 3], reduced=False))
+    n = wf.name_grid()

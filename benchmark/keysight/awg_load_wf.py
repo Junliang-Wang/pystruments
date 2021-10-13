@@ -24,8 +24,8 @@ ch2 = awg.channels[4]
 ch1.set_memory_mode('EXT')
 ch2.set_memory_mode('EXT')
 
-# sequencer = M8195A_sequencer(awg)
-sequencer = awg.sequencer
+# sequencer = M8197A_sequencer(awg)
+sequencer = awg.get_sequencer()
 
 ch1 = sequencer.channels[1]
 ch4 = sequencer.channels[4]
