@@ -31,9 +31,15 @@ class M8197A(InstrumentBase):
         Parameter('clock_ref_divider2', value=1, min_value=1, max_value=8, valid_types=[int]),
     )
 
-    def __init__(self, my_address):
-        self.address = my_address
-        super(M8197A, self).__init__(address=self.address)
+    def __init__(self, *args, **kwargs):
+        if 'timeout' not in kwargs.keys():
+            kwargs['timeout'] = 10000  # in ms
+        super(M8197A, self).__init__(*args, **kwargs)
+
+    def send(self, cmd, wait_to_complete=True):
+        super(M8197A, self).send(cmd)
+        if wait_to_complete:
+            self.read('*OPT?')
 
     @property
     def awgs(self):
