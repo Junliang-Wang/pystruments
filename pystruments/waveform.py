@@ -297,7 +297,7 @@ if __name__ == '__main__':
     from pystruments.funclib import pulse, pulse_params
 
     params = pulse_params(pts=1, base=0, delay=1, ampl=1, length=10)
-    params['delay'].sweep_stepsize(init=0, step_size=5, dim=1)
+    params['delay'].sweep_stepsize(init=0, step_size=5, dim=3)
     wf.set_func(pulse, params)
-    values = list(wf.value_generator(dims=[100, 2, 3], reduced=False))
+    values = list(wf.value_generator(dims=[100, 2, 3, 4], reduced=False))
     n = wf.name_grid()

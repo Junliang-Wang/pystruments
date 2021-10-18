@@ -977,7 +977,6 @@ class M8195A_sequencer(Waveform):
                 last_seq_id += 1
 
 
-# # @profile
 def digitise(x):
     """
     This function maps a floating-point number in the range [-1.0,1.0]
@@ -1001,53 +1000,6 @@ def reverse_digitise(x):
     idx = x + 127
     return values[idx]
 
-
-def awg_example1():
-    address_awg1 = 'TCPIP0::localhost::hislip4::INSTR'
-    pulse_with_markers = csv_to_list('pulse_with_markers.csv')
-    pulse2 = csv_to_list('pulse2.csv')
-    awg_config_example1 = config_txt_to_dict(txt_file='awg_config_example1.txt')
-    with M8195A(address_awg1) as awg1:
-        awg1.reset()
-        awg1.set_config(conf_dict=awg_config_example1)
-        awg1.set_channel_status(channel=1, status=True)
-        awg1.set_channel_status(channel=4, status=True)
-        awg1.set_waveform_to_segment(channel=1, segment_number=1, waveform=pulse_with_markers)
-        awg1.set_waveform_to_segment(channel=1, segment_number=2, waveform=pulse2)
-        awg1.set_waveform_to_segment(channel=4, segment_number=1, waveform=pulse_with_markers)
-        awg1.set_waveform_to_segment(channel=4, segment_number=2, waveform=pulse2)
-        print(awg1.get_waveform_from_segment(channel=1, segment_number=1))
-        awg1.reset_sequence_table()
-        awg1.set_sequence_entry(sequence_id=0, segment_id=1, new_sequence=True, segment_advancement_mode='cond')
-        awg1.set_sequence_entry(sequence_id=1, segment_id=2, end_sequence=True, end_scenario=True)
-
-
-def awg_example2():
-    address_awg1 = 'TCPIP0::localhost::hislip1::INSTR'
-    # pulse_with_markers = csv_to_list('pulse_with_markers.csv')
-    # pulse2 = csv_to_list('pulse4.csv')
-    arr1 = np.zeros((1280, 3))
-    arr1[0:4, 0] = 1
-    arr2 = np.zeros((1280 * 2, 3))
-    arr2[-1:-4, 0] = -1
-    arr1 = arr1.tolist()
-    arr2 = arr2.tolist()
-    awg_config_example1 = config_txt_to_dict(txt_file='awg_config_example1.txt')
-    with M8195A(address_awg1) as awg1:
-        awg1.reset()
-        awg1.set_awg_config(awg_dict=awg_config_example1)
-        awg1.set_channel_status(channel=1, status=True)
-        awg1.set_channel_status(channel=4, status=True)
-        awg1.set_waveform_to_segment(channel=1, segment_number=1, waveform=arr1)
-        awg1.set_waveform_to_segment(channel=1, segment_number=2, waveform=arr2)
-        awg1.set_waveform_to_segment(channel=4, segment_number=1, waveform=arr1)
-        awg1.set_waveform_to_segment(channel=4, segment_number=2, waveform=arr2)
-        s = awg1.get_waveform_from_segment(channel=1, segment_number=1)
-        print(s)
-        # print(awg1.get_waveform_from_segment(channel=1, segment_id=2)[-1:-5])
-        awg1.reset_sequence_table()
-        awg1.set_sequence_entry(sequence_id=0, segment_id=1, new_sequence=True, segment_advancement_mode='cond')
-        awg1.set_sequence_entry(sequence_id=1, segment_id=2, end_sequence=True, end_scenario=True)
 
 
 if __name__ == '__main__':

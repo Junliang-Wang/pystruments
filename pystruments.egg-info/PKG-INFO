@@ -1,0 +1,33 @@
+Metadata-Version: 2.1
+Name: pystruments
+Version: 0.1.0
+Summary:  Python package for instrument drivers. 
+Home-page: https://github.com/Junliang-Wang/pystruments
+Author: Junliang WANG
+Author-email: junliang.wang@gmail.com
+License: BSD-3-Clause
+Description: # pystruments README
+        
+        [comment]: <> ([![BSD-3-Clause]&#40;https://img.shields.io/github/license/nextnanopy/nextnanopy&#41;]&#40;https://opensource.org/licenses/BSD-3-Clause&#41;)
+        
+        [comment]: <> ([![Downloads]&#40;https://img.shields.io/github/downloads/nextnanopy/nextnanopy/total&#41;]&#40;https://github.com/nextnanopy/nextnanopy/releases&#41;)
+        
+        Python package for instrument drivers.
+        Current implementations:
+        * Keysight M8195A (Arbitrary Waveform Generator)
+        * Keysight M8197A (Synchronisation unit)
+        
+        ### Version 0.1.0 (October 11th, 2021)
+        * Initial release
+        
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Operating System :: OS Independent
+Classifier: Intended Audience :: Customer Service
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Education
+Classifier: Intended Audience :: Science/Research
+Classifier: Natural Language :: English
+Requires-Python: >=2.7
+Description-Content-Type: text/markdown

@@ -1,0 +1,6 @@
+# ignore all python 2.7 generated files
+*.pyc
+
+# ignore pycharm files
+*.idea
+.idea/
