@@ -22,7 +22,7 @@ install_requires = [
 
 setuptools.setup(
     name="pystruments",
-    version="0.1.0",
+    version="0.1.1",
     author="Junliang WANG",
     author_email="junliang.wang@gmail.com",
     license='BSD-3-Clause',
