@@ -40,7 +40,7 @@ class InstrumentBase(object):
     default_parameters = tuple()
 
     def __init__(self, address, timeout=2000, write_termination=None, read_termination='\n',
-                 parent=None, childs=[], name='instr',
+                 parent=None, childs=(), name='instr',
                  **kwargs):
         self.address = address
         self.name = name
@@ -117,7 +117,7 @@ class InstrumentBase(object):
         for param_name in self.parameters_list:
             self.get_parameter(param_name, read_only=False, update=True)
 
-    def add_safety(self, name, **kwargs):
+    def update_safety(self, name, **kwargs):
         param = self.get_parameter_validator(name)
         for key, value in kwargs.items():
             if not hasattr(param, key):
@@ -141,40 +141,42 @@ class InstrumentBase(object):
     def remove_childs(self):
         self.childs = []
 
-    def set_config(self, config, include_childs=False):
-        instr_config = config['config']
-        if include_childs and 'childs_config' in config.keys():
-            childs_configs = config['childs_config']
+    def set_config(self, config):
+        self.name = config['name']
+        instr_params = config['params']
+        if 'childs' in config.keys():
+            childs_configs = config['childs']
         else:
             childs_configs = []
 
-        for key, value in instr_config.items():
+        for key, param_dict in instr_params.items():
             if key not in self.parameters_list:
                 raise ValueError('Parameter "{}" is not valid: ', key)
             fset_name = 'set_{}'.format(key)
             if not hasattr(self, fset_name):
                 continue
             fset = getattr(self, 'set_{}'.format(key))
+            value = param_dict['value']
             fset(value)
         for i, child_config in enumerate(childs_configs):
             self.childs[i].set_config(config=child_config)
 
-    def get_config(self, include_childs=False):
+    def get_config(self):
         config = {}
-        config['config'] = {param.name: param.value for param in self.parameters}
-        if include_childs:
-            config['childs_config'] = [child.get_config() for child in self.childs]
+        config['name'] = self.name
+        config['params'] = {param.name: param.get_dict() for param in self.parameters}
+        config['childs'] = [child.get_config() for child in self.childs]
         return config
 
-    def save_config(self, fullpath, include_childs=True):
+    def save_config(self, fullpath):
         with open(fullpath, 'wb') as file:
-            json.dump(self.get_config(include_childs=include_childs), file)
+            json.dump(self.get_config(), file)
 
-    def load_config(self, fullpath, include_childs=True):
+    def load_config(self, fullpath):
         with open(fullpath, 'rb') as file:
             config = json.load(file)
-        self.set_config(config, include_childs=include_childs)
-        return self.get_config(include_childs=include_childs)
+        self.set_config(config)
+        return self.get_config()
 
     def __enter__(self):
         self.open_com()

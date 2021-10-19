@@ -1,5 +1,7 @@
 README.md
 setup.py
+benchmark/__init__.py
+benchmark/load_waveform.py
 pystruments/__init__.py
 pystruments/funclib.py
 pystruments/instrument.py

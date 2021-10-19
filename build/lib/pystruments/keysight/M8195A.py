@@ -3,7 +3,7 @@ import collections
 from pystruments.instrument import InstrumentBase, get_decorator, set_decorator
 from pystruments.parameter import Parameter
 from pystruments.utils import *
-from pystruments.waveform import Waveform
+from pystruments.waveform import WaveformGroup, Waveform
 
 granularity = 1280
 _validators = {
@@ -74,10 +74,13 @@ class M8195A(InstrumentBase):
     })
 
     def __init__(self, *args, **kwargs):
+        if 'timeout' not in kwargs.keys():
+            kwargs['timeout'] = 10000  # in ms
         super(M8195A, self).__init__(*args, **kwargs)
         for n in [1, 2, 3, 4]:
             ch = M8195A_channel(n=n, parent=self, name='ch{}'.format(n))
             self.add_child(ch)
+        self.create_sequencer()
 
     def send(self, cmd, wait_to_complete=True):
         super(M8195A, self).send(cmd)
@@ -149,11 +152,21 @@ class M8195A(InstrumentBase):
     def get_channel(self, channel):
         return self.channels[channel]
 
-    def get_sequencer(self):
-        sequencer = M8195A_sequencer(self, name=self.name)
+    def create_sequencer(self):
+        sequencer = M8195A_sequencer(self, name='{}_sequencer'.format(self.name))
         for seq_ch, awg_ch in zip(sequencer.channels.values(), self.channels.values()):
             seq_ch.name = awg_ch.name
-        return sequencer
+        self.sequencer = sequencer
+
+    def get_sequencer(self):
+        return self.sequencer
+
+    def get_config(self):
+        config = super(M8195A, self).get_config()
+        if hasattr(self, 'sequencer'):
+            seq_config = self.sequencer.get_dict()
+            config['sequencer'] = seq_config
+        return config
 
     """
     segments
@@ -205,7 +218,7 @@ class M8195A(InstrumentBase):
                            sequence_loop=1,  # Number of loops for this sequence.
                            sequence_advancement_mode='auto',  # Sequence advancement mode is related to trigger mode;
                            # could be 'auto', 'cond', 'repeat' or 'single'.
-                           idle_delay=0,  # Idle value in SingleWaveform Sample Clocks.
+                           idle_delay=0,  # Idle value in Waveform Sample Clocks.
                            # (Extreme values depend on sampling rate divider 'SRD' : min=2560/SRD; max=2**24*256/SRD-1).
                            idle_sample=0,  # Sample to be played during pause.
                            ):
@@ -267,7 +280,7 @@ class M8195A(InstrumentBase):
             else:
                 entry_type = 'idle'
             sequence_output['idle_sample'] = sequence_list[3]  # Sample played during pause.
-            sequence_output['idle_delay'] = sequence_list[4]  # Idle value in SingleWaveform Sample Clocks.
+            sequence_output['idle_delay'] = sequence_list[4]  # Idle value in Waveform Sample Clocks.
         else:
             entry_type = 'data'
             sequence_output['segment_loop'] = sequence_list[2]  # Number of loops for this segment.
@@ -715,7 +728,6 @@ class M8195A_channel(InstrumentBase):
         id_length_dict = self._segment_catalog_to_dict(msg)
         return id_length_dict
 
-    # @profile
     def set_waveform_to_segment(self, waveform, marker1=None, marker2=None, segment_id=1, offset=0):
         _validators['segment_id'].set_value(segment_id)
         _validators['offset'].set_value(offset)
@@ -790,7 +802,6 @@ class M8195A_channel(InstrumentBase):
     private methods
     """
 
-    # @profile
     def _waveform_to_str(self, waveform, marker1=None, marker2=None, ignore_markers=False):
         self._check_waveform_values(waveform)
         # wf = [digitise(v) for v in waveform]
@@ -810,7 +821,6 @@ class M8195A_channel(InstrumentBase):
             wf_str = np.zeros(size * 2)
             wf_str[0::2] = wf
             wf_str[1::2] = mks
-        # wf_str = [str(v) for v in wf_str]
         wf_str = wf_str.astype(str)
         wf_str = ','.join(wf_str)
         return wf_str
@@ -834,8 +844,11 @@ class M8195A_channel(InstrumentBase):
         if not same_length:
             raise ValueError('waveform and markers values must have same max_length')
 
-    def _str_to_waveform(self, wf_str, using_markers=False):
-        if wf_str:
+    @staticmethod
+    def _str_to_waveform(wf_str, using_markers=False):
+        if not wf_str:
+            wf, mk1, mk2 = None, None, None
+        else:
             values = wf_str.split(',')
             values = np.array([int(v) for v in values])
 
@@ -853,8 +866,6 @@ class M8195A_channel(InstrumentBase):
                 mk1 = None
                 mk2 = None
             wf = np.array([reverse_digitise(v) for v in wf])
-        else:
-            wf, mk1, mk2 = None, None, None
         return wf, mk1, mk2
 
     @staticmethod
@@ -871,51 +882,51 @@ class M8195A_channel(InstrumentBase):
         return d
 
 
-class M8195A_sequencer(Waveform):
-    def __init__(self, awg, *args, **kwargs):
+class M8195A_sequencer(WaveformGroup):
+    def __init__(self, awg, name='M8195A_sequencer'):
         if not isinstance(awg, M8195A):
             raise ValueError('AWG must be an instance of {}'.format(M8195A))
-        super(M8195A_sequencer, self).__init__(*args, **kwargs)
+        super(M8195A_sequencer, self).__init__(waveforms=[], name=name)
         self.awg = awg
         n_channels = len(self.awg.channels)
         for n in range(n_channels):
             n = n + 1
             channel = Waveform(name='ch{}'.format(n))
-            self.add_child(channel)
+            self.add_waveform(channel)
 
     @property
     def channels(self):
-        return {i + 1: child for i, child in enumerate(self.childs)}
+        return {i + 1: wf for i, wf in enumerate(self.wfs)}
 
     def get_dict(self):
+        # TODO
         d = super(M8195A_sequencer, self).get_dict()
-        del d['func']
-        del d['func_params']
         return d
 
-    def generate_sequence(self, dims, n_empty=0, start_with_empty=True, **entry_kwargs):
-        self.set_dims(dims, reduced=True)
+    def generate_sequence(self, dims_size, n_empty=0, start_with_empty=True):
         self._prepare_sequence()
-        self._fill_segments()
+        self._fill_segments(dims_size)
         self._fill_sequence_table(
+            dims_size=dims_size,
             n_empty=n_empty,
             start_with_empty=start_with_empty,
-            **entry_kwargs
         )
 
     def _prepare_sequence(self):
         self.awg.stop()
         self.awg.set_sequence_mode('STS')
         self.awg.reset_sequence_table()
-        for ch in self.awg.childs:
+        for ch in self.awg.channels.values():
             ch.delete_all_segments()
 
-    def _fill_segments(self):
+    def _fill_segments(self, dims_size):
         wf_channels = self.channels
+        swept_dims = self.swept_dims()
+
         last_ids = []
         for n, channel in self.awg.active_channels.items():
             wf_ch = wf_channels[n]
-            wf_values = wf_ch.value_generator()
+            wf_values = wf_ch.get_waveforms_subset(dims_size, dims=swept_dims)
 
             segment_id = 1  # use 1 for dummy waveform (all 0V)
             channel.define_segment(
@@ -933,23 +944,19 @@ class M8195A_sequencer(Waveform):
         if not same_last_id:
             raise ValueError('Channel waveforms have different sizes')
 
-    def _fill_sequence_table(self, n_empty=0, start_with_empty=True, **entry_kwargs):
+    def _fill_sequence_table(self, dims_size, n_empty=0, start_with_empty=True):
         use_marker = self.awg.is_using_markers()
+        seg_loop, n_entries, seq_loop = self.split_dims_size(dims_size)
         default_kwargs = dict(
-            segment_loop=1,
-            segment_advancement_mode='cond',
-            sequence_loop=1,
-            sequence_advancement_mode='auto',
+            segment_loop=seg_loop,
+            segment_advancement_mode='single',
+            sequence_loop=seq_loop,
+            sequence_advancement_mode='single',
         )
-        for key in default_kwargs.keys():
-            if key not in entry_kwargs.keys():
-                continue
-            default_kwargs[key] = entry_kwargs[key]
 
-        n_segments = int(np.prod(self.dims[1:]))
-        seq_size = n_segments * (1 + n_empty)
+        seq_size = n_entries * (1 + n_empty)
         last_seq_id = 0
-        for i in range(n_segments):
+        for i in range(n_entries):
             segment_id = i + 2  # id 1 is a dummy segment
 
             if start_with_empty:
@@ -974,8 +981,71 @@ class M8195A_sequencer(Waveform):
                 )
                 last_seq_id += 1
 
+    # def _fill_segments(self, dims_size):
+    #     wf_channels = self.channels
+    #     last_ids = []
+    #     for n, channel in self.awg.active_channels.items():
+    #         wf_ch = wf_channels[n]
+    #         wf_values = wf_ch.get_waveforms(dims_size)
+    #
+    #         segment_id = 1  # use 1 for dummy waveform (all 0V)
+    #         channel.define_segment(
+    #             segment_id=segment_id,
+    #             init_value=0.0,
+    #         )
+    #         for values in wf_values:
+    #             segment_id += 1
+    #             channel.set_waveform_to_segment(
+    #                 segment_id=segment_id,
+    #                 waveform=values,
+    #             )
+    #         last_ids.append(segment_id)
+    #     same_last_id = len(set(last_ids)) == 1
+    #     if not same_last_id:
+    #         raise ValueError('Channel waveforms have different sizes')
 
-# # @profile
+    # def _fill_sequence_table(self, n_empty=0, start_with_empty=True, **entry_kwargs):
+    #     use_marker = self.awg.is_using_markers()
+    #     default_kwargs = dict(
+    #         segment_loop=1,
+    #         segment_advancement_mode='single',
+    #         sequence_loop=1,
+    #         sequence_advancement_mode='auto',
+    #     )
+    #     for key in default_kwargs.keys():
+    #         if key not in entry_kwargs.keys():
+    #             continue
+    #         default_kwargs[key] = entry_kwargs[key]
+    #
+    #     n_segments = int(np.prod(self.dims[1:]))
+    #     seq_size = n_segments * (1 + n_empty)
+    #     last_seq_id = 0
+    #     for i in range(n_segments):
+    #         segment_id = i + 2  # id 1 is a dummy segment
+    #
+    #         if start_with_empty:
+    #             segment_ids = [1] * n_empty + [segment_id]
+    #         else:
+    #             segment_ids = [segment_id] + [1] * n_empty
+    #
+    #         for seg_id in segment_ids:
+    #             new_sequence = True if last_seq_id == 0 else False
+    #             end_sequence = True if last_seq_id == seq_size - 1 else False
+    #             end_scenario = end_sequence
+    #
+    #             self.awg.set_sequence_entry(
+    #                 sequence_id=last_seq_id,
+    #                 segment_id=seg_id,
+    #                 entry_type='data',
+    #                 use_marker=use_marker,
+    #                 new_sequence=new_sequence,
+    #                 end_sequence=end_sequence,
+    #                 end_scenario=end_scenario,
+    #                 **default_kwargs
+    #             )
+    #             last_seq_id += 1
+
+
 def digitise(x):
     """
     This function maps a floating-point number in the range [-1.0,1.0]
@@ -984,7 +1054,8 @@ def digitise(x):
     x = np.array(x)
     ndiv = 254  # equivalent to 127*2
     dv = 2. / ndiv
-    idx = (x + 127) // dv - 127
+    idx = (x + 1) // dv - 127
+    idx = idx.astype(int)
     return idx
 
 
@@ -999,69 +1070,30 @@ def reverse_digitise(x):
     return values[idx]
 
 
-def awg_example1():
-    address_awg1 = 'TCPIP0::localhost::hislip4::INSTR'
-    pulse_with_markers = csv_to_list('pulse_with_markers.csv')
-    pulse2 = csv_to_list('pulse2.csv')
-    awg_config_example1 = config_txt_to_dict(txt_file='awg_config_example1.txt')
-    with M8195A(address_awg1) as awg1:
-        awg1.reset()
-        awg1.set_config(conf_dict=awg_config_example1)
-        awg1.set_channel_status(channel=1, status=True)
-        awg1.set_channel_status(channel=4, status=True)
-        awg1.set_waveform_to_segment(channel=1, segment_number=1, waveform=pulse_with_markers)
-        awg1.set_waveform_to_segment(channel=1, segment_number=2, waveform=pulse2)
-        awg1.set_waveform_to_segment(channel=4, segment_number=1, waveform=pulse_with_markers)
-        awg1.set_waveform_to_segment(channel=4, segment_number=2, waveform=pulse2)
-        print(awg1.get_waveform_from_segment(channel=1, segment_number=1))
-        awg1.reset_sequence_table()
-        awg1.set_sequence_entry(sequence_id=0, segment_id=1, new_sequence=True, segment_advancement_mode='cond')
-        awg1.set_sequence_entry(sequence_id=1, segment_id=2, end_sequence=True, end_scenario=True)
-
-
-def awg_example2():
-    address_awg1 = 'TCPIP0::localhost::hislip1::INSTR'
-    # pulse_with_markers = csv_to_list('pulse_with_markers.csv')
-    # pulse2 = csv_to_list('pulse4.csv')
-    arr1 = np.zeros((1280, 3))
-    arr1[0:4, 0] = 1
-    arr2 = np.zeros((1280 * 2, 3))
-    arr2[-1:-4, 0] = -1
-    arr1 = arr1.tolist()
-    arr2 = arr2.tolist()
-    awg_config_example1 = config_txt_to_dict(txt_file='awg_config_example1.txt')
-    with M8195A(address_awg1) as awg1:
-        awg1.reset()
-        awg1.set_awg_config(awg_dict=awg_config_example1)
-        awg1.set_channel_status(channel=1, status=True)
-        awg1.set_channel_status(channel=4, status=True)
-        awg1.set_waveform_to_segment(channel=1, segment_number=1, waveform=arr1)
-        awg1.set_waveform_to_segment(channel=1, segment_number=2, waveform=arr2)
-        awg1.set_waveform_to_segment(channel=4, segment_number=1, waveform=arr1)
-        awg1.set_waveform_to_segment(channel=4, segment_number=2, waveform=arr2)
-        s = awg1.get_waveform_from_segment(channel=1, segment_number=1)
-        print(s)
-        # print(awg1.get_waveform_from_segment(channel=1, segment_id=2)[-1:-5])
-        awg1.reset_sequence_table()
-        awg1.set_sequence_entry(sequence_id=0, segment_id=1, new_sequence=True, segment_advancement_mode='cond')
-        awg1.set_sequence_entry(sequence_id=1, segment_id=2, end_sequence=True, end_scenario=True)
-
-
 if __name__ == '__main__':
-    pass
+    import numpy as np
+    from pystruments.keysight import M8195A
+    from pystruments.funclib import pulse, pulse_params
+
     address_awg_virtual = 'TCPIP0::localhost::hislip4::INSTR'
     address_sync_virtual = 'TCPIP0::localhost::hislip0::INSTR'
-    address_awg1 = 'TCPIP0::localhost::hislip1::INSTR'
-    address_awg2 = 'TCPIP0::localhost::hislip2::INSTR'
-    address_sync = 'TCPIP0::localhost::hislip3::INSTR'
+    address_sync = 'TCPIP0::localhost::hislip1::INSTR'
+    address_awg1 = 'TCPIP0::localhost::hislip2::INSTR'
+    address_awg2 = 'TCPIP0::localhost::hislip3::INSTR'
 
-    awg = M8195A(address_awg_virtual)
+    awg = M8195A(address_awg_virtual, name='AWG1')
     awg.open_com()
+    awg.stop()
     awg.reset()
     awg.delete_all_segments()
     awg.set_awg_mode('DUAL')
+    awg.set_sampling_frequency(64)
     awg.set_sampling_rate_divider(2)
+    awg.set_armed_mode('SELF')
     awg.set_trigger_mode('TRIG')
+    awg.set_advance_trigger_source('TRIG')
+    awg.set_event_trigger_source('TRIG')
+
     awg.channels[1].set_status(True)
     awg.channels[4].set_status(True)
     awg.set_sequence_mode('STS')
@@ -1070,81 +1102,23 @@ if __name__ == '__main__':
     ch1.set_memory_mode('EXT')
     ch2.set_memory_mode('EXT')
 
-    m = 10
-    wf1 = [-1, 1, 0, 0] + [0] * (1280 * m - 4)
-    wf2 = [0, 1, 0, 0] + [0] * (1280 * m - 4)
-    mk1 = [0, 1, 0, 1] + [0] * (1280 * m - 4)
-    mk2 = [0, 0, 1, 1] + [0] * (1280 * m - 4)
-    awg.set_waveform_to_segment(
-        channel=1, waveform=wf1, marker1=mk1, marker2=mk2,
-        segment_id=1, offset=0,
+    sequencer = awg.get_sequencer()
+
+    ch4_seq = sequencer.channels[4]
+
+    func = pulse
+    params = pulse_params(
+        pts=1,
+        base=0,
+        delay=1,
+        ampl=1,
+        length=10,
     )
-    # awg.set_waveform_to_segment(
-    #     channel=4, waveform=wf2, marker1=mk1, marker2=mk2,
-    #     segment_id=1, offset=0,
-    # )
-    # print(wf_str)
-    # for n in [1, 2]:
-    #     for ch in [1, 2, 3, 4]:
-    #         awg.set_waveform_to_segment(
-    #             channel=ch, waveform=wf, marker1=mk1, marker2=mk2,
-    #             segment_id=n, offset=0,
-    #         )
-    # awg.reset_sequence_table()
-    # awg.set_sequence_entry(
-    #     sequence_id=0,
-    #     entry_type='data',
-    #     segment_id=1,
-    #     segment_loop=1,
-    #     segment_advancement_mode='cond',
-    #     use_marker=False,
-    #     new_sequence=True,
-    #     end_sequence=False,
-    #     end_scenario=False,
-    #     sequence_loop=1,
-    #     sequence_advancement_mode='auto',
-    # )
-    # awg.set_sequence_entry(
-    #     sequence_id=1,
-    #     entry_type='data',
-    #     segment_id=2,
-    #     segment_loop=1,
-    #     segment_advancement_mode='cond',
-    #     use_marker=False,
-    #     new_sequence=False,
-    #     end_sequence=True,
-    #     end_scenario=False,
-    #     sequence_loop=1,
-    #     sequence_advancement_mode='auto',
-    # )
-    # awg.set_sequence_entry(
-    #     sequence_id=2,
-    #     entry_type='data',
-    #     segment_id=1,
-    #     segment_loop=1,
-    #     segment_advancement_mode='cond',
-    #     use_marker=False,
-    #     new_sequence=True,
-    #     end_sequence=False,
-    #     end_scenario=False,
-    #     sequence_loop=1,
-    #     sequence_advancement_mode='auto',
-    # )
-    # awg.set_sequence_entry(
-    #     sequence_id=3,
-    #     entry_type='data',
-    #     segment_id=2,
-    #     segment_loop=1,
-    #     segment_advancement_mode='cond',
-    #     use_marker=False,
-    #     new_sequence=False,
-    #     end_sequence=True,
-    #     end_scenario=True,
-    #     sequence_loop=1,
-    #     sequence_advancement_mode='auto',
-    # )
-    # print(awg.get_sequence_entry(0))
-    # awg.run()
-    # waveform, mk1, mk2 = awg.get_waveform_from_segment(channel=1, segment_id=1, offset=0)
-    # wf_str = awg._get_waveform_from_segment(channel=1, segment_id=1, offset=0)
-#
+    params['length'].sweep_stepsize(1, 3, dim=2)
+    ch4_seq.set_func(func, params)
+
+    sequencer.generate_sequence([1280, 2, 3, 10])
+    awg.save_config('keysight_awg.json')
+    import json
+    with open('keysight_awg.json', 'rb') as file:
+        conf = json.load(file)

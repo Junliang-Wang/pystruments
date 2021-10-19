@@ -153,13 +153,16 @@ class M8195A(InstrumentBase):
         return self.channels[channel]
 
     def create_sequencer(self):
-        sequencer = M8195A_sequencer(self, name='{}_sequencer'.format(self.name))
-        for seq_ch, awg_ch in zip(sequencer.channels.values(), self.channels.values()):
-            seq_ch.name = awg_ch.name
-        self.sequencer = sequencer
+        self.sequencer = M8195A_sequencer(self, name='{}_sequencer'.format(self.name))
+        self._update_sequencer_names()
 
     def get_sequencer(self):
+        self._update_sequencer_names()
         return self.sequencer
+
+    def _update_sequencer_names(self):
+        for seq_ch, awg_ch in zip(self.sequencer.channels.values(), self.channels.values()):
+            seq_ch.name = awg_ch.name
 
     def get_config(self):
         config = super(M8195A, self).get_config()
@@ -1120,5 +1123,6 @@ if __name__ == '__main__':
     sequencer.generate_sequence([1280, 2, 3, 10])
     awg.save_config('keysight_awg.json')
     import json
+
     with open('keysight_awg.json', 'rb') as file:
         conf = json.load(file)
