@@ -41,6 +41,7 @@ class M8195A(InstrumentBase):
         Parameter('event_trigger_source', value='EVEN', valid_values=['TRIG', 'EVEN']),
         Parameter('slave_status', value='NORM', valid_values=['NORM', 'SLAV']),
         Parameter('slot_number', value=1),
+        Parameter('scenario_advance_mode', value='AUTO', valid_values=['AUTO', 'COND', 'REP', 'SING']),
     )
     """
     DICTIONARY TO SETUP OR ANALYSE CONTROL PARAMETER OF SEQUENCE ENTRIES
@@ -315,6 +316,12 @@ class M8195A(InstrumentBase):
     def get_sequence_initial_index(self):
         idx = self.read(':STAB:SEQ:SEL?')
         return int(idx)
+
+    def set_scenario_loop(self, value):
+        self.send(':STAB:SCEN:COUN {:d}'.format(value))
+
+    def get_scenario_loop(self):
+        self.send(':STAB:SCEN:COUN?')
 
     def _setup_control_parameter(self,
                                  entry_type='data',
@@ -658,6 +665,15 @@ class M8195A(InstrumentBase):
         msg = self.read(':INST:SLOT?')
         return int(msg)
 
+    @get_decorator
+    def get_scenario_advance_mode(self):
+        msg = self.read(':STAB:SCEN:ADV?')
+        return str(msg)
+
+    @set_decorator
+    def set_scenario_advance_mode(self, value):
+        self.send(':STAB:SCEN:ADV {:s}'.format(value))
+
     """
     private methods
     """
@@ -909,15 +925,17 @@ class M8195A_sequencer(WaveformGroup):
     def generate_sequence(self, dims_size, n_empty=0, start_with_empty=True):
         self._prepare_sequence()
         self._fill_segments(dims_size)
-        self._fill_sequence_table(
-            dims_size=dims_size,
-            n_empty=n_empty,
-            start_with_empty=start_with_empty,
-        )
+        if n_empty > 0:
+            self._fill_sequence_table_with_empties(
+                dims_size=dims_size,
+                n_empty=n_empty,
+                start_with_empty=start_with_empty,
+            )
+        else:
+            self._fill_sequence_table(dims_size=dims_size)
 
     def _prepare_sequence(self):
         self.awg.stop()
-        self.awg.set_sequence_mode('STS')
         self.awg.reset_sequence_table()
         for ch in self.awg.channels.values():
             ch.delete_all_segments()
@@ -947,30 +965,58 @@ class M8195A_sequencer(WaveformGroup):
         if not same_last_id:
             raise ValueError('Channel waveforms have different sizes')
 
-    def _fill_sequence_table(self, dims_size, n_empty=0, start_with_empty=True):
+    def _fill_sequence_table(self, dims_size):
+        self.awg.set_sequence_mode('STS')
         use_marker = self.awg.is_using_markers()
         seg_loop, n_entries, seq_loop = self.split_dims_size(dims_size)
-        default_kwargs = dict(
-            segment_loop=seg_loop,
-            segment_advancement_mode='single',
-            sequence_loop=seq_loop,
-            sequence_advancement_mode='single',
-        )
 
-        seq_size = n_entries * (1 + n_empty)
+        seq_size = n_entries
+        last_seq_id = 0
+        for i in range(n_entries):
+            seg_id = i + 2  # id 1 is a dummy segment
+            new_sequence = True if last_seq_id == 0 else False
+            end_sequence = True if last_seq_id == seq_size - 1 else False
+            end_scenario = end_sequence
+
+            self.awg.set_sequence_entry(
+                sequence_id=last_seq_id,
+                segment_id=seg_id,
+                entry_type='data',
+                use_marker=use_marker,
+                new_sequence=new_sequence,
+                end_sequence=end_sequence,
+                end_scenario=end_scenario,
+                segment_loop=seg_loop,
+                segment_advancement_mode='single',
+                sequence_loop=seq_loop,
+                sequence_advancement_mode='single',
+            )
+            last_seq_id += 1
+
+    def _fill_sequence_table_with_empties(self, dims_size, n_empty=0, start_with_empty=True):
+        self.awg.set_sequence_mode('STSC')
+        use_marker = self.awg.is_using_markers()
+        seq_loop, n_entries, scen_loop = self.split_dims_size(dims_size)
+        self.awg.set_scenario_advance_mode('SING')
+        self.awg.set_scenario_loop(scen_loop)
+
+        seq_size = n_entries * 2
         last_seq_id = 0
         for i in range(n_entries):
             segment_id = i + 2  # id 1 is a dummy segment
 
             if start_with_empty:
-                segment_ids = [1] * n_empty + [segment_id]
+                segment_ids = [1] + [segment_id]
+                seg_loops = [n_empty, 1]
             else:
-                segment_ids = [segment_id] + [1] * n_empty
+                segment_ids = [segment_id] + [1]
+                seg_loops = [1, n_empty]
 
-            for seg_id in segment_ids:
-                new_sequence = True if last_seq_id == 0 else False
-                end_sequence = True if last_seq_id == seq_size - 1 else False
-                end_scenario = end_sequence
+            for i, seg_id in enumerate(segment_ids):
+                new_sequence = [True, False][i]
+                end_sequence = [False, True][i]
+                end_scenario = True if last_seq_id == seq_size - 1 else False
+                seg_loop = seg_loops[i]
 
                 self.awg.set_sequence_entry(
                     sequence_id=last_seq_id,
@@ -980,73 +1026,12 @@ class M8195A_sequencer(WaveformGroup):
                     new_sequence=new_sequence,
                     end_sequence=end_sequence,
                     end_scenario=end_scenario,
-                    **default_kwargs
+                    segment_loop=seg_loop,
+                    segment_advancement_mode='single',
+                    sequence_loop=seq_loop,
+                    sequence_advancement_mode='single',
                 )
                 last_seq_id += 1
-
-    # def _fill_segments(self, dims_size):
-    #     wf_channels = self.channels
-    #     last_ids = []
-    #     for n, channel in self.awg.active_channels.items():
-    #         wf_ch = wf_channels[n]
-    #         wf_values = wf_ch.get_waveforms(dims_size)
-    #
-    #         segment_id = 1  # use 1 for dummy waveform (all 0V)
-    #         channel.define_segment(
-    #             segment_id=segment_id,
-    #             init_value=0.0,
-    #         )
-    #         for values in wf_values:
-    #             segment_id += 1
-    #             channel.set_waveform_to_segment(
-    #                 segment_id=segment_id,
-    #                 waveform=values,
-    #             )
-    #         last_ids.append(segment_id)
-    #     same_last_id = len(set(last_ids)) == 1
-    #     if not same_last_id:
-    #         raise ValueError('Channel waveforms have different sizes')
-
-    # def _fill_sequence_table(self, n_empty=0, start_with_empty=True, **entry_kwargs):
-    #     use_marker = self.awg.is_using_markers()
-    #     default_kwargs = dict(
-    #         segment_loop=1,
-    #         segment_advancement_mode='single',
-    #         sequence_loop=1,
-    #         sequence_advancement_mode='auto',
-    #     )
-    #     for key in default_kwargs.keys():
-    #         if key not in entry_kwargs.keys():
-    #             continue
-    #         default_kwargs[key] = entry_kwargs[key]
-    #
-    #     n_segments = int(np.prod(self.dims[1:]))
-    #     seq_size = n_segments * (1 + n_empty)
-    #     last_seq_id = 0
-    #     for i in range(n_segments):
-    #         segment_id = i + 2  # id 1 is a dummy segment
-    #
-    #         if start_with_empty:
-    #             segment_ids = [1] * n_empty + [segment_id]
-    #         else:
-    #             segment_ids = [segment_id] + [1] * n_empty
-    #
-    #         for seg_id in segment_ids:
-    #             new_sequence = True if last_seq_id == 0 else False
-    #             end_sequence = True if last_seq_id == seq_size - 1 else False
-    #             end_scenario = end_sequence
-    #
-    #             self.awg.set_sequence_entry(
-    #                 sequence_id=last_seq_id,
-    #                 segment_id=seg_id,
-    #                 entry_type='data',
-    #                 use_marker=use_marker,
-    #                 new_sequence=new_sequence,
-    #                 end_sequence=end_sequence,
-    #                 end_scenario=end_scenario,
-    #                 **default_kwargs
-    #             )
-    #             last_seq_id += 1
 
 
 def digitise(x):
@@ -1106,23 +1091,20 @@ if __name__ == '__main__':
     ch2.set_memory_mode('EXT')
 
     sequencer = awg.get_sequencer()
-
+    ch1_seq = sequencer.channels[1]
     ch4_seq = sequencer.channels[4]
 
-    func = pulse
-    params = pulse_params(
-        pts=1,
-        base=0,
-        delay=1,
-        ampl=1,
-        length=10,
-    )
+    params = pulse_params(pts=1, base=0, delay=1, ampl=1, length=100)
+    params['delay'].sweep_stepsize(1, 2, dim=3)
+    ch1_seq.set_func(pulse, params)
+
+    params = pulse_params(pts=1, base=0, delay=1, ampl=1, length=100)
     params['length'].sweep_stepsize(1, 3, dim=2)
-    ch4_seq.set_func(func, params)
+    ch4_seq.set_func(pulse, params)
 
-    sequencer.generate_sequence([1280, 2, 3, 10])
-    awg.save_config('keysight_awg.json')
-    import json
+    sequencer.generate_sequence([1280, 2, 3, 10, 20], n_empty=1)
+    # awg.save_config('keysight_awg.json')
 
-    with open('keysight_awg.json', 'rb') as file:
-        conf = json.load(file)
+    # with open('keysight_awg.json', 'rb') as file:
+    #     conf = json.load(file)
+#
