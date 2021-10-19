@@ -113,7 +113,7 @@ def test2():
         awg.channels[1].set_memory_mode('EXT')
         awg.set_sequence_mode('STS')
 
-        sequencer = awg.get_sequencer()
+        sequencer = awg.get_awg_sequencers()
         ch1_seq = sequencer.channels[1]
         ch1_seq.set_func(func, fparams[i])
         sequencer.generate_sequence(dims[i], n_empty=0, start_with_empty=True)
@@ -152,11 +152,11 @@ def test3():
     awg1.channels[1].set_status(True)
     awg1.channels[1].set_memory_mode('EXT')
     awg1.set_sequence_mode('STS')
-    sequencer = awg1.get_sequencer()
+    sequencer = awg1.get_awg_sequencers()
 
     ch1_seq = sequencer.channels[1]
     ch1_seq.set_func(func, func_params)
-    # ch1_seq.func_params['length'].sweep_linear(100, 100, dim=1)
+    # ch1_seq.params['length'].sweep_linear(100, 100, dim=1)
     sequencer.generate_sequence([1280*2, 5], n_empty=0, start_with_empty=True)
 
     awg2.set_awg_mode('DUAL')
@@ -169,15 +169,15 @@ def test3():
     awg2.channels[4].set_memory_mode('EXT')
     awg2.set_sequence_mode('STS')
 
-    sequencer = awg2.get_sequencer()
+    sequencer = awg2.get_awg_sequencers()
     ch1_seq = sequencer.channels[1]
     ch1_seq.set_func(func, func_params)
-    # ch1_seq.func_params['length'].sweep_stepsize(10, 10, dim=1)
+    # ch1_seq.params['length'].sweep_stepsize(10, 10, dim=1)
     # sequencer.generate_sequence([1280, 5], n_empty=0, start_with_empty=True)
 
     ch4_seq = sequencer.channels[4]
     ch4_seq.set_func(func, func_params)
-    # ch4_seq.func_params['ampl'].sweep_linear(-1, 1, dim=1)
+    # ch4_seq.params['ampl'].sweep_linear(-1, 1, dim=1)
     sequencer.generate_sequence([1280, 5], n_empty=0, start_with_empty=True)
 
     sync.set_config_mode(False)
@@ -217,11 +217,11 @@ def test4():
     awg1.channels[1].set_status(True)
     awg1.channels[1].set_memory_mode('EXT')
     awg1.set_sequence_mode('STS')
-    sequencer = awg1.get_sequencer()
+    sequencer = awg1.get_awg_sequencers()
 
     ch1_seq = sequencer.channels[1]
     ch1_seq.set_func(func, func_params)
-    ch1_seq.func_params['length'].sweep_linear(100, 100, dim=1)
+    ch1_seq.params['length'].sweep_linear(100, 100, dim=1)
     sequencer.generate_sequence([1280*2, 5], n_empty=0, start_with_empty=True)
 
     awg2.set_awg_mode('DUAL')
@@ -234,14 +234,14 @@ def test4():
     awg2.channels[4].set_memory_mode('EXT')
     awg2.set_sequence_mode('STS')
 
-    sequencer = awg2.get_sequencer()
+    sequencer = awg2.get_awg_sequencers()
     ch1_seq = sequencer.channels[1]
     ch1_seq.set_func(func, func_params)
-    ch1_seq.func_params['length'].sweep_stepsize(10, 10, dim=1)
+    ch1_seq.params['length'].sweep_stepsize(10, 10, dim=1)
 
     ch4_seq = sequencer.channels[4]
     ch4_seq.set_func(func, func_params)
-    ch4_seq.func_params['ampl'].sweep_linear(-1, 1, dim=1)
+    ch4_seq.params['ampl'].sweep_linear(-1, 1, dim=1)
     sequencer.generate_sequence([1280, 5], n_empty=0, start_with_empty=True)
 
     sync.set_config_mode(False)
@@ -280,11 +280,11 @@ def test5():
     awg1.channels[1].set_status(True)
     awg1.channels[1].set_memory_mode('EXT')
     awg1.set_sequence_mode('STS')
-    sequencer = awg1.get_sequencer()
+    sequencer = awg1.get_awg_sequencers()
 
     ch1_seq = sequencer.channels[1]
     ch1_seq.set_func(func, func_params)
-    ch1_seq.func_params['length'].sweep_linear(100, 100, dim=1)
+    ch1_seq.params['length'].sweep_linear(100, 100, dim=1)
     sequencer.generate_sequence([1280, 5*2], n_empty=0, start_with_empty=True)
 
     awg2.set_awg_mode('DUAL')
@@ -297,14 +297,14 @@ def test5():
     awg2.channels[4].set_memory_mode('EXT')
     awg2.set_sequence_mode('STS')
 
-    sequencer = awg2.get_sequencer()
+    sequencer = awg2.get_awg_sequencers()
     ch1_seq = sequencer.channels[1]
     ch1_seq.set_func(func, func_params)
-    ch1_seq.func_params['length'].sweep_stepsize(10, 10, dim=1)
+    ch1_seq.params['length'].sweep_stepsize(10, 10, dim=1)
 
     ch4_seq = sequencer.channels[4]
     ch4_seq.set_func(func, func_params)
-    ch4_seq.func_params['ampl'].sweep_linear(-1, 1, dim=1)
+    ch4_seq.params['ampl'].sweep_linear(-1, 1, dim=1)
     sequencer.generate_sequence([1280, 5], n_empty=1, start_with_empty=True)
 
     sync.set_config_mode(False)
@@ -343,7 +343,7 @@ def test6():
     awg1.channels[1].set_status(True)
     awg1.channels[1].set_memory_mode('EXT')
     awg1.set_sequence_mode('STS')
-    sequencer = awg1.get_sequencer()
+    sequencer = awg1.get_awg_sequencers()
 
     ch1_seq = sequencer.channels[1]
     ch1_seq.set_func(func, func_params)
@@ -358,7 +358,7 @@ def test6():
     awg2.channels[1].set_memory_mode('EXT')
     awg2.channels[4].set_memory_mode('EXT')
     awg2.set_sequence_mode('STS')
-    sequencer = awg2.get_sequencer()
+    sequencer = awg2.get_awg_sequencers()
     ch1_seq = sequencer.channels[1]
     ch1_seq.set_func(func, func_params)
     sequencer.generate_sequence([1280, 1], n_empty=0, start_with_empty=True)

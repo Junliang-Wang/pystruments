@@ -31,6 +31,8 @@ class Parameter(object):
     metadata : dict
         extra information (default is {})
     """
+    safety_keys = ['min_value', 'max_value', 'min_step', 'max_step', 'size_step',
+                   'valid_values', 'not_valid_values', 'valid_types', 'valid_multiples']
 
     def __init__(self, name, value, unit='a.u.', metadata=None,
                  min_value=None, max_value=None,
@@ -42,15 +44,18 @@ class Parameter(object):
         self.name = str(name)
         self.unit = unit
         self.metadata = metadata
-        self.min_value = min_value
-        self.max_value = max_value
-        self.min_step = min_step
-        self.max_step = max_step
-        self.size_step = size_step
-        self.valid_values = valid_values
-        self.not_valid_values = not_valid_values
-        self.valid_types = valid_types
-        self.valid_multiples = valid_multiples
+        self.reset_safety()
+        self.set_safety(
+            min_value=min_value,
+            max_value=max_value,
+            min_step=min_step,
+            max_step=max_step,
+            size_step=size_step,
+            valid_values=valid_values,
+            not_valid_values=not_valid_values,
+            valid_types=valid_types,
+            valid_multiples=valid_multiples,
+        )
 
         self._sweep_values_generator = lambda pts: self.value
         self.dim = None
@@ -69,10 +74,7 @@ class Parameter(object):
         return out
 
     def print_info(self):
-        attrs = [
-            'name', 'unit', 'value', 'dim', 'min_value', 'max_value', 'valid_values', 'not_valid_values',
-            'valid_types', 'valid_multiples', 'min_step', 'max_step', 'size_step',
-        ]
+        attrs = ['name', 'unit', 'value', 'dim', 'pts'] + self.safety_keys
         values = []
         for attr in attrs:
             value = getattr(self, attr)
@@ -80,9 +82,25 @@ class Parameter(object):
         info = '\n'.join(values)
         print(info)
 
+    def reset_safety(self):
+        for key in self.safety_keys:
+            setattr(self, key, None)
+
+    def set_safety(self, min_value=None, max_value=None,
+                   min_step=None, max_step=None, size_step=None,
+                   valid_values=None, not_valid_values=None,
+                   valid_types=None, valid_multiples=None):
+        kwargs = locals()
+        kwargs.pop('self')
+        for key, value in kwargs.items():
+            if value is None:
+                continue
+            if key in self.safety_keys:
+                setattr(self, key, value)
+
     def get_dict(self):
         d = {}
-        keys = ['name', 'unit', 'dim', 'metadata']
+        keys = ['name', 'unit', 'dim', 'metadata', ]  # + self.safety_keys
         for key in keys:
             if hasattr(self, key):
                 d[key] = getattr(self, key)
@@ -92,6 +110,17 @@ class Parameter(object):
             value = self.value
         d['value'] = value
         return d
+
+    def set_dict(self, d):
+        keys = ['name', 'unit', 'dim', 'metadata']  # + self.safety_keys
+        for key, value in d.items():
+            if key not in keys:
+                continue
+            setattr(self, key, value)
+        value = d['value']
+        if isinstance(value, list):
+            value = np.array(value)
+        self.set_value(value)
 
     def set_value(self, value):
         self.check_value(value)
@@ -216,8 +245,8 @@ class Parameter(object):
                     valid = False
 
         if self.not_valid_values is not None:
-            for value in self.not_valid_values:
-                if value in arr:
+            for value in arr:
+                if value in self.not_valid_values:
                     valid = False
         if not valid:
             raise ValueError('Parameter "{}": Not valid value found'.format(self.name))
@@ -253,3 +282,10 @@ def verify_min_max(arr, min_value=None, max_value=None):
         valid_max = np.max(arr) <= max_value
     valid = valid_min and valid_max
     return valid
+
+
+if __name__ == '__main__':
+    p = Parameter('test', 2, min_value=1)
+    p.sweep_linear(1, 2, dim=1)
+    p.set_pts(100)
+    p2 = Parameter('test2', 1, )

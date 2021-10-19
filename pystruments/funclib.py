@@ -58,7 +58,7 @@ def nfunc_generator(func):
 
 def nparams_generator(func):
     """
-    Generate n func_params with its respective kwargs: kwargs1_i, kwargs2_i, etc...
+    Generate n params with its respective kwargs: kwargs1_i, kwargs2_i, etc...
     where i is the ith func (1, 2, ...)
     """
     args = list(func.__code__.co_varnames)[0:func.__code__.co_argcount]

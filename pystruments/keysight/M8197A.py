@@ -4,7 +4,6 @@ from pystruments.instrument import InstrumentBase, get_decorator, set_decorator
 from pystruments.keysight.M8195A import M8195A
 from pystruments.parameter import Parameter
 from pystruments.utils import *
-from pystruments.waveform import Waveform
 
 
 class M8197A(InstrumentBase):
@@ -123,11 +122,11 @@ class M8197A(InstrumentBase):
         """
         self.send(':TRIG:ENAB')
 
-    def get_sequencer(self):
-        sequencer = M8197A_sequencer(self, name=self.name)
-        for seq_awg, sync_awg in zip(sequencer.awgs.values(), self.awgs.values()):
-            seq_awg.name = sync_awg.name
-        return sequencer
+    def get_awg_sequencers(self):
+        seqs = {}
+        for slot_number, awg in self.awgs.items():
+            seqs[slot_number] = awg.get_sequencer()
+        return seqs
 
     @staticmethod
     def _addresses_to_list(str_addresses):
@@ -442,41 +441,64 @@ class M8197A(InstrumentBase):
         self.send(':OUTP:ROSC:RCD2 {}'.format(int(value)))
 
 
-class M8197A_sequencer(Waveform):
-    def __init__(self, sync, *args, **kwargs):
-        if not isinstance(sync, M8197A):
-            raise ValueError('AWG must be an instance of {}'.format(M8197A))
-        self.sync = sync
-        super(M8197A_sequencer, self).__init__(*args, **kwargs)
-        for awg in self.sync.awgs.values():
-            seqi = awg.get_sequencer()
-            self.add_child(seqi)
-
-    @property
-    def awgs(self):
-        return {slot_number: self.childs[i] for i, slot_number in enumerate(self.sync.awgs.keys())}
-
-    def generate_sequence(self, dims, n_empty=0, start_with_empty=True, **entry_kwargs):
-        self.set_dims(dims, reduced=True)
-        for awg in self.childs:
-            awg.generate_sequence(dims, n_empty=n_empty, start_with_empty=start_with_empty, **entry_kwargs)
-
-    def get_dict(self):
-        d = super(M8197A_sequencer, self).get_dict()
-        del d['func']
-        del d['func_params']
-        return d
-
-
 if __name__ == '__main__':
+    from pystruments.funclib import pulse, pulse_params
+
     address_awg_virtual = 'TCPIP0::localhost::hislip4::INSTR'
     address_sync_virtual = 'TCPIP0::localhost::hislip0::INSTR'
     address_awg1 = 'TCPIP0::localhost::hislip1::INSTR'
     address_awg2 = 'TCPIP0::localhost::hislip2::INSTR'
     address_sync = 'TCPIP0::localhost::hislip3::INSTR'
 
-    sync = M8197A(address_sync_virtual)
+    sync = M8197A(address_sync_virtual, name='sync')
     sync.open_com()
     sync.enslave_all()
+    sync.set_sampling_frequency(64)
+    sync.set_armed_mode('SELF')
+    sync.set_trigger_mode('TRIG')
+    sync.set_advance_trigger_source('TRIG')
+    sync.set_event_trigger_source('TRIG')
+    for slot_number, awg in sync.awgs.items():
+        awg.set_awg_mode('DUAL')
+        awg.set_sampling_rate_divider(2)
+        awg.channels[1].set_status(True)
+        awg.channels[4].set_status(True)
+        ch1 = awg.channels[1]
+        ch2 = awg.channels[4]
+        ch1.set_memory_mode('EXT')
+        ch2.set_memory_mode('EXT')
+    sequencers = sync.get_awg_sequencers()
+    seq0 = sequencers[0]
+
+    func = pulse
+    params = pulse_params(
+        pts=1,
+        base=0,
+        delay=1,
+        ampl=1,
+        length=10,
+    )
+    ch1_seq = seq0.channels[1]
+    ch4_seq = seq0.channels[4]
+    ch1_seq.set_func(func, params)
+
+    params = pulse_params(
+        pts=1,
+        base=0,
+        delay=1,
+        ampl=1,
+        length=10,
+    )
+    # params['delay'].sweep_stepsize(1, 2, dim=1)
+    params['length'].sweep_stepsize(1, 3, dim=2)
+    ch4_seq.set_func(func, params)
+
+    dsize = [1280, 2, 3, 10]
+    seq0.generate_sequence(dsize, n_empty=0, start_with_empty=True)
     # sync.enslave(address_awg1)
     # sync.configure_sync(sync_dict={'trigger_mode': 'TRIG', 'trigger_level': 0.0})
+
+    sync.save_config('keysight_sync.json')
+    import json
+    with open('keysight_sync.json', 'rb') as file:
+        conf = json.load(file)
