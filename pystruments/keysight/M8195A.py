@@ -146,7 +146,7 @@ class M8195A(InstrumentBase):
         return chs
 
     def is_using_markers(self):
-        awg_mode = self.get_parameter('awg_mode', update=False)
+        awg_mode = self.get_parameter('awg_mode', update=False).value
         b = awg_mode in ['MARK', 'DCM']
         return b
 
@@ -738,7 +738,7 @@ class M8195A_channel(InstrumentBase):
         catalog = self.get_segment_catalog()
         length = catalog[segment_id]
         wf_str = self.read(':TRAC{:d}:DATA? {:d},{:d},{:d}'.format(self.n, segment_id, offset, length))
-        using_markers = length == 2 * len(wf_str.split(','))
+        using_markers = len(wf_str.split(',')) == 2 * length
         wf, mk1, mk2 = self._str_to_waveform(wf_str, using_markers=using_markers)
         return wf, mk1, mk2
 
@@ -823,7 +823,6 @@ class M8195A_channel(InstrumentBase):
 
     def _waveform_to_str(self, waveform, marker1=None, marker2=None, ignore_markers=False):
         self._check_waveform_values(waveform)
-        # wf = [digitise(v) for v in waveform]
         wf = digitise(waveform)
         if ignore_markers:
             wf_str = wf
@@ -836,7 +835,7 @@ class M8195A_channel(InstrumentBase):
             self._check_marker_values(mk2)
             mks = np.zeros(size)
             mks[mk1 == 1] += 1
-            mks[mk2 == 1] += 1
+            mks[mk2 == 1] += 2
             wf_str = np.zeros(size * 2)
             wf_str[0::2] = wf
             wf_str[1::2] = mks
@@ -1060,51 +1059,52 @@ def reverse_digitise(x):
 
 if __name__ == '__main__':
     import numpy as np
-    from pystruments.keysight import M8195A
-    from pystruments.funclib import pulse, pulse_params
 
-    address_awg_virtual = 'TCPIP0::localhost::hislip4::INSTR'
-    address_sync_virtual = 'TCPIP0::localhost::hislip0::INSTR'
-    address_sync = 'TCPIP0::localhost::hislip1::INSTR'
-    address_awg1 = 'TCPIP0::localhost::hislip2::INSTR'
-    address_awg2 = 'TCPIP0::localhost::hislip3::INSTR'
+    address_awg_virtual = 'TCPIP0::localhost::hislip0::INSTR'
+    address_sync_virtual = 'TCPIP0::localhost::hislip5::INSTR'
+    address_awg1 = 'TCPIP0::localhost::hislip1::INSTR'
+    address_awg2 = 'TCPIP0::localhost::hislip2::INSTR'
+    address_sync = 'TCPIP0::localhost::hislip3::INSTR'
 
-    awg = M8195A(address_awg_virtual, name='AWG1')
+    awg = M8195A(address_awg_virtual)
     awg.open_com()
-    awg.stop()
-    awg.reset()
-    awg.delete_all_segments()
-    awg.set_awg_mode('DUAL')
-    awg.set_sampling_frequency(64)
-    awg.set_sampling_rate_divider(2)
-    awg.set_armed_mode('SELF')
-    awg.set_trigger_mode('TRIG')
-    awg.set_advance_trigger_source('TRIG')
-    awg.set_event_trigger_source('TRIG')
-
-    awg.channels[1].set_status(True)
-    awg.channels[4].set_status(True)
+    # awg.reset()
+    awg.set_awg_mode('DCM')
+    awg.set_sampling_rate_divider(1)
     awg.set_sequence_mode('STS')
     ch1 = awg.channels[1]
-    ch2 = awg.channels[4]
+    ch2 = awg.channels[2]
     ch1.set_memory_mode('EXT')
     ch2.set_memory_mode('EXT')
+    awg.delete_all_segments()
+    #
+    wf = np.zeros(1280 * 1)
+    wf1 = wf.copy()
+    wf1[1:1000] = 1
+    wfm = wf.copy()
+    wfm[1:100] = 1
+    # wfm = None
+    for n in [1, 2]:
+        awg.set_waveform_to_segment(
+            channel=1, waveform=wf1, marker1=wfm, marker2=wfm,
+            segment_id=n, offset=0,
+        )
+    a = awg.get_waveform_from_segment(1, 1)
+    # print(a)
+    # awg.close_com()
 
-    sequencer = awg.get_sequencer()
-    ch1_seq = sequencer.channels[1]
-    ch4_seq = sequencer.channels[4]
+    # import pyvisa
+    # rm = pyvisa.ResourceManager()
+    # instrument = rm.open_resource(address_awg_virtual)
+    # instrument.query('TRAC1:DATA? 1,0,12800')
 
-    params = pulse_params(pts=1, base=0, delay=1, ampl=1, length=100)
-    params['delay'].sweep_stepsize(1, 2, dim=3)
-    ch1_seq.set_func(pulse, params)
+    # instr = InstrumentBase(address_awg_virtual,read_termination=None,write_termination='\r\n')
+    # instr.open_com()
+    # instr.read('TRAC1:DATA? 1,0,12800')
 
-    params = pulse_params(pts=1, base=0, delay=1, ampl=1, length=100)
-    params['length'].sweep_stepsize(1, 3, dim=2)
-    ch4_seq.set_func(pulse, params)
-
-    sequencer.generate_sequence([1280, 2, 3, 10, 20], n_empty=1)
-    # awg.save_config('keysight_awg.json')
-
-    # with open('keysight_awg.json', 'rb') as file:
-    #     conf = json.load(file)
-#
+    # awg = M8195A(address_awg_virtual, read_termination='\n', write_termination=None)
+    # awg.open_com()
+    # # awg.set_awg_mode('SING')
+    # mode = awg.get_awg_mode()
+    # a = awg.read(':TRAC1:DATA? 1,0,{}'.format(1280*3))
+    # a = awg.get_waveform_from_segment(1, 1)
